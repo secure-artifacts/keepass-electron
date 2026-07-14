@@ -40,41 +40,42 @@ jobs:
         id: list_artifacts
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Path release -Include "*.exe" -Recurse | Select-Object -ExpandProperty FullName
-          $files | ForEach-Object { Write-Output $_ }
-          $fileList = $files -join "`n"
-          "artifact_paths=$fileList" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "=== Release directory structure ==="
+          if (Test-Path release) {
+            Get-ChildItem -Path release -Recurse | Select-Object FullName, Length
+            $files = Get-ChildItem -Path release -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+            Write-Host "Found EXE files: $($files.Count)"
+            $files | ForEach-Object { Write-Host "  $_" }
+          } else {
+            Write-Host "WARNING: 'release' directory not found!"
+            Get-ChildItem -Path . -Depth 2 | Where-Object { $_.Extension -eq ".exe" } | Select-Object FullName
+          }
 
       - name: Upload Portable EXE
         id: upload_portable
         uses: actions/upload-artifact@v4
         with:
           name: portable-exe
-          path: release/**/*-Portable-*.exe
+          path: release/**/*.exe
+          if-no-files-found: warn
 
       - name: Upload Setup EXE
         id: upload_setup
         uses: actions/upload-artifact@v4
         with:
           name: setup-exe
-          path: release/**/*-Setup-*.exe
+          path: release/**/*Setup*.exe
+          if-no-files-found: warn
 
-      - name: Attest Portable EXE
+      - name: Attest all EXE artifacts
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: release/**/*-Portable-*.exe
-
-      - name: Attest Setup EXE
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: release/**/*-Setup-*.exe
+          subject-path: release/**/*.exe
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/**/*-Portable-*.exe
-            release/**/*-Setup-*.exe
+          files: release/**/*.exe
           generate_release_notes: true
           draft: false
           prerelease: false
