@@ -1,0 +1,82 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    name: Build Electron App (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite frontend
+        run: npm run build
+
+      - name: Build Electron distributables
+        run: npx electron-builder --win portable nsis --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List release artifacts
+        id: list_artifacts
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path release -Include "*.exe" -Recurse | Select-Object -ExpandProperty FullName
+          $files | ForEach-Object { Write-Output $_ }
+          $fileList = $files -join "`n"
+          "artifact_paths=$fileList" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload Portable EXE
+        id: upload_portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-exe
+          path: release/**/*-Portable-*.exe
+
+      - name: Upload Setup EXE
+        id: upload_setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-exe
+          path: release/**/*-Setup-*.exe
+
+      - name: Attest Portable EXE
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/**/*-Portable-*.exe
+
+      - name: Attest Setup EXE
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/**/*-Setup-*.exe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/**/*-Portable-*.exe
+            release/**/*-Setup-*.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
